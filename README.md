@@ -14,8 +14,7 @@ A browser extension for managing Control D rules for the current site with tempo
 
 1. Clone this repository or download the extension files
 2. Open your browser's extension management page:
-   - Chrome/Edge: `chrome://extensions/`
-   - Firefox: `about:addons`
+   - Chrome: `chrome://extensions/`
 3. Enable "Developer mode"
 4. Click "Load unpacked" and select the extension directory
 

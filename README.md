@@ -36,36 +36,6 @@ A browser extension for managing Control D rules for the current site with tempo
 4. Choose a duration (or select "Permanent")
 5. Click "Apply Rule"
 
-## Permissions
-
-This extension requires the following permissions:
-- `activeTab`: To access the current tab's URL
-- `storage`: To save your API credentials and settings
-- `alarms`: To manage temporary rule expiration
-- `https://api.controld.com/*`: To communicate with the Control D API
-
-## Development
-
-### Project Structure
-
-```
-control-d-ext/
-├── manifest.json      # Extension manifest (Manifest V3)
-├── Interface.html     # Popup UI
-├── logic.js           # Main extension logic
-└── Worker.js          # Service worker for background tasks
-```
-
-### Technologies
-
-- Manifest V3
-- Vanilla JavaScript
-- Modern CSS with glassmorphism design
-
-## License
-
-[Add your license here]
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

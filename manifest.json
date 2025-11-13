@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Control D Quick Switcher",
+  "version": "1.0",
+  "description": "Manage Control D rules for the current site with temporary overrides.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://api.controld.com/*"
+  ],
+  "action": {
+    "default_popup": "Interface.html",
+    "default_title": "Control D Switcher"
+  },
+  "background": {
+    "service_worker": "Worker.js"
+  }
+}

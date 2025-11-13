@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control D Switcher</title>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --primary: #10b981;
+            --primary-hover: #059669;
+            --danger: #ef4444;
+            --blue: #3b82f6;
+            --border: rgba(148, 163, 184, 0.2);
+        }
+
+        body {
+            width: 380px;
+            min-height: 500px;
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        /* Utility Classes */
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .text-center { text-align: center; }
+        .text-xs { font-size: 12px; }
+        .font-bold { font-weight: 700; }
+
+        /* Glass Card Style */
+        .glass {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Header */
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            background: linear-gradient(to right, #10b981, #34d399);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Buttons */
+        button {
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px;
+            border-radius: 8px;
+            color: var(--text-muted);
+        }
+        .icon-btn:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+        .btn-primary {
+            background: linear-gradient(to right, var(--primary), var(--primary-hover));
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 8px rgba(16, 185, 129, 0.3); }
+        .btn-primary:active { transform: translateY(0); }
+
+        .btn-save {
+            background: var(--primary);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: linear-gradient(to right, #ef4444, #dc2626);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+        }
+        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 6px 8px rgba(239, 68, 68, 0.3); }
+        .btn-danger:active { transform: translateY(0); }
+
+        /* Inputs */
+        input, select {
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+        input:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        }
+
+        /* Action Grid */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .action-btn:hover { 
+            background: rgba(255, 255, 255, 0.12); 
+            border-color: rgba(148, 163, 184, 0.4);
+            transform: translateY(-1px);
+        }
+        
+        /* Hover states that preview active styling */
+        .action-btn[data-action="0"]:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.5);
+            color: #fca5a5;
+        }
+        .action-btn[data-action="1"]:hover {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.5);
+            color: #6ee7b7;
+        }
+        .action-btn[data-action="3"]:hover {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: rgba(59, 130, 246, 0.5);
+            color: #93c5fd;
+        }
+
+        /* Active States for Action Buttons */
+        .action-btn[data-action="0"].active {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: var(--danger);
+            color: #fca5a5;
+        }
+        .action-btn[data-action="1"].active {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: var(--primary);
+            color: #6ee7b7;
+        }
+        .action-btn[data-action="3"].active {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: var(--blue);
+            color: #93c5fd;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--primary);
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .pulse { animation: pulse 2s infinite; }
+
+        /* Section Labels */
+        label {
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center gap-2">
+            <h1>Control D</h1>
+        </div>
+        <button id="settingsBtn" class="icon-btn">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+        </button>
+    </div>
+
+    <div id="configSection" class="hidden glass mb-4">
+        <div class="mb-3">
+            <label>API Key</label>
+            <div class="flex gap-2">
+                <input type="password" id="apiKeyInput" placeholder="Enter API Key">
+                <button id="saveApiKeyBtn" class="btn-save">Save</button>
+            </div>
+        </div>
+        <div>
+            <label>Profile ID</label>
+            <div class="flex gap-2">
+                <input type="text" id="profileIdInput" placeholder="e.g. p12345">
+                <button id="saveProfileIdBtn" class="btn-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainSection">
+        <div class="glass text-center mb-4">
+            <label>Current Domain</label>
+            <div id="currentDomain" class="font-bold mb-3" style="font-size: 18px; word-break: break-all;">loading...</div>
+            <div class="status-badge">
+                <span id="statusDot" class="dot pulse"></span>
+                <span id="statusText">Ready</span>
+            </div>
+        </div>
+
+        <div class="glass">
+            <div class="mb-4">
+                <label>Action</label>
+                <div class="action-grid">
+                    <button data-action="0" class="action-btn">Block</button>
+                    <button data-action="1" class="action-btn">Bypass</button>
+                    <button data-action="3" class="action-btn">Redirect</button>
+                </div>
+            </div>
+
+            <div id="redirectCountrySection" class="hidden mb-4">
+                <label>Proxy Location</label>
+                <select id="countrySelect">
+                    <option value="">Loading proxies...</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label>Duration</label>
+                <select id="durationSelect">
+                    <option value="0">Permanent</option>
+                    <option value="1" selected>1 Minute</option>
+                    <option value="5">5 Minutes</option>
+                    <option value="10">10 Minutes</option>
+                    <option value="30">30 Minutes</option>
+                    <option value="60">1 Hour</option>
+                    <option value="1440">24 Hours</option>
+                </select>
+            </div>
+
+            <button id="applyBtn" class="btn-primary w-full">Apply Rule</button>
+            <button id="removeBtn" class="hidden btn-danger w-full" style="margin-top: 10px;">Remove Rule</button>
+        </div>
+    </div>
+
+    <div id="message" class="text-center text-xs font-bold" style="margin-top: 15px; height: 20px;"></div>
+
+    <script src="logic.js"></script>
+</body>
+</html>

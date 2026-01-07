@@ -514,10 +514,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         showMessage("Warning: Could not detect rule type. Rule will be permanently removed.", "text-yellow-300");
                     }
 
+                    // Extract proxy ID from the existing rule (for redirect rules)
+                    let ruleProxyId = null;
+                    if (foundRule && ruleAction === RuleAction.REDIRECT) {
+                        // Check both possible locations for the proxy ID
+                        ruleProxyId = foundRule.via || foundRule.action?.via || null;
+                    }
+
                     await chrome.storage.local.set({
                         [`rule_${currentDomain}`]: {
                             action: ruleAction,
-                            proxyId: selectedProxy,
+                            proxyId: ruleProxyId,
                             timestamp: Date.now()
                         }
                     });

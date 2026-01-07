@@ -1,4 +1,12 @@
+/**
+ * Control D Quick Switcher - Main Logic
+ *
+ * Handles UI interactions, API calls, and state management for the extension popup.
+ */
+
 document.addEventListener('DOMContentLoaded', async () => {
+    Logger.info('DOMContentLoaded', 'Extension popup initialized');
+
     // UI Elements
     const views = {
         config: document.getElementById('configSection'),
@@ -22,11 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // State
     let currentDomain = '';
-    let selectedAction = 1; // Default to Bypass (1)
+    let selectedAction = RuleAction.BYPASS; // Default to Bypass
     let selectedProxy = '';
     let availableProxies = [];
     let hasExistingRule = false; // Track if current domain has an existing rule
-    let existingRuleAction = null; // Track what type of rule exists (0=Block, 1=Bypass, 3=Redirect)
+    let existingRuleAction = null; // Track what type of rule exists
     let foundRule = null; // Store the found rule object for deletion
 
     // 1. Load Settings & Current Tab
@@ -125,40 +133,75 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Load available proxies
+    // Load available proxies (with caching)
     async function loadProxies() {
         const storedData = await chrome.storage.sync.get(['apiKey']);
         const apiKey = storedData.apiKey?.trim();
-        
+
         if (!apiKey) {
+            Logger.warn('loadProxies', 'No API key configured');
             const select = document.getElementById('countrySelect');
             if (select) {
                 select.innerHTML = '<option value="">API Key required</option>';
             }
             return;
         }
-        
+
         const select = document.getElementById('countrySelect');
         if (!select) return;
-        
+
+        // Check cache first
+        try {
+            const cachedData = await chrome.storage.local.get([
+                Cache.PROXY_LIST_KEY,
+                Cache.PROXY_LIST_TIMESTAMP_KEY
+            ]);
+
+            const cachedProxies = cachedData[Cache.PROXY_LIST_KEY];
+            const cacheTimestamp = cachedData[Cache.PROXY_LIST_TIMESTAMP_KEY];
+
+            // Use cache if valid and not expired
+            if (cachedProxies && cacheTimestamp) {
+                const age = Date.now() - cacheTimestamp;
+                if (age < Cache.PROXY_LIST_TTL) {
+                    Logger.info('loadProxies', 'Using cached proxy list', {
+                        count: cachedProxies.length,
+                        ageMinutes: Math.floor(age / 60000)
+                    });
+                    availableProxies = cachedProxies;
+                    populateProxySelect();
+                    return;
+                }
+                Logger.info('loadProxies', 'Cache expired, fetching fresh data', {
+                    ageMinutes: Math.floor(age / 60000)
+                });
+            }
+        } catch (cacheErr) {
+            Logger.error('loadProxies', 'Error reading cache', cacheErr);
+        }
+
+        // Fetch from API
         select.innerHTML = '<option value="">Loading proxies...</option>';
         select.disabled = true;
-        
+
         try {
-            const res = await fetch('https://api.controld.com/proxies', {
+            Logger.info('loadProxies', 'Fetching proxy list from API');
+
+            const res = await fetch(API.BASE_URL + API.ENDPOINTS.PROXIES, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }
             });
-            
+
             if (res.ok) {
                 let data;
                 try {
                     data = JSON.parse(await res.text());
                 } catch (parseErr) {
+                    Logger.error('loadProxies', 'Failed to parse JSON response', parseErr);
                     throw new Error(`Invalid JSON response: ${parseErr.message}`);
                 }
-                
+
                 // Try multiple possible response structures
                 if (data.body) {
                     if (data.body.proxies && Array.isArray(data.body.proxies)) {
@@ -180,19 +223,42 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     availableProxies = [];
                 }
-                
+
+                Logger.info('loadProxies', 'Proxy list fetched successfully', {
+                    count: availableProxies.length
+                });
+
+                // Cache the results
                 if (availableProxies.length > 0) {
+                    try {
+                        await chrome.storage.local.set({
+                            [Cache.PROXY_LIST_KEY]: availableProxies,
+                            [Cache.PROXY_LIST_TIMESTAMP_KEY]: Date.now()
+                        });
+                        Logger.info('loadProxies', 'Proxy list cached', {
+                            count: availableProxies.length
+                        });
+                    } catch (cacheErr) {
+                        Logger.error('loadProxies', 'Failed to cache proxy list', cacheErr);
+                    }
+
                     populateProxySelect();
                 } else {
+                    Logger.warn('loadProxies', 'No proxies found in response');
                     select.innerHTML = '<option value="">No proxies available</option>';
                 }
-                
+
                 select.disabled = false;
             } else {
+                Logger.error('loadProxies', 'API request failed', {
+                    status: res.status,
+                    statusText: res.statusText
+                });
                 select.innerHTML = `<option value="">Failed to load proxies (${res.status})</option>`;
                 select.disabled = false;
             }
         } catch (err) {
+            Logger.error('loadProxies', 'Error loading proxies', err);
             const select = document.getElementById('countrySelect');
             if (select) {
                 const errorMsg = err.message || 'Unknown error';
@@ -293,7 +359,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             selectedAction = parseInt(e.target.dataset.action);
             
-            if (selectedAction === 3) {
+            if (selectedAction === RuleAction.REDIRECT) {
                 views.redirectCountrySection.classList.remove('hidden');
                 setTimeout(() => {
                     const select = document.getElementById('countrySelect');
@@ -302,7 +368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else if (select && availableProxies.length > 0) {
                         populateProxySelect();
                     }
-                }, 150);
+                }, UI.PROXY_LOAD_DELAY);
             } else {
                 views.redirectCountrySection.classList.add('hidden');
             }
@@ -317,45 +383,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Apply Rule
     views.applyBtn.addEventListener('click', async () => {
         if (!currentDomain) return;
-        
+
         const duration = parseInt(views.inputs.duration.value);
-        
+
         const storedData = await chrome.storage.sync.get(['apiKey', 'profileId']);
         const apiKey = storedData.apiKey?.trim();
         const profileId = storedData.profileId?.trim();
 
         if (!apiKey || !profileId) {
-            showMessage("Missing API Key or Profile ID. Please configure in settings.", "text-red-300");
+            Logger.warn('applyRule', 'Missing credentials');
+            showMessage(ErrorMessages.MISSING_CREDENTIALS, "text-red-300");
             views.config.classList.remove('hidden');
             return;
         }
 
-        views.applyBtn.textContent = "Applying...";
-        views.applyBtn.disabled = true;
+        setButtonLoading(views.applyBtn, 'Applying...');
 
         try {
             let redirectProxyId = null;
-            if (selectedAction === 3) {
+            if (selectedAction === RuleAction.REDIRECT) {
                 const selectValue = views.inputs.country.value?.trim();
                 redirectProxyId = selectValue || selectedProxy?.trim() || null;
-                
+
                 if (!redirectProxyId) {
-                    showMessage("Please select a proxy location for redirect", "text-red-300");
-                    views.applyBtn.textContent = "Apply Rule";
-                    views.applyBtn.disabled = false;
+                    Logger.warn('applyRule', 'No proxy selected for redirect');
+                    showMessage(ErrorMessages.MISSING_PROXY, "text-red-300");
+                    resetButton(views.applyBtn);
                     return;
                 }
             }
-            
+
+            Logger.info('applyRule', 'Applying rule', {
+                domain: currentDomain,
+                action: selectedAction,
+                actionLabel: RuleActionLabels[selectedAction],
+                duration,
+                proxyId: redirectProxyId
+            });
+
             const result = await updateControlDRule(apiKey, profileId, currentDomain, selectedAction, redirectProxyId);
-            
+
             if (result.success) {
+                Logger.info('applyRule', 'Rule applied successfully', {
+                    domain: currentDomain,
+                    action: selectedAction
+                });
                 showMessage("Rule updated successfully!", "text-emerald-300");
-                
+
                 // Update status dot
                 if (duration > 0) {
                     if (views.statusDot) {
-                        views.statusDot.style.backgroundColor = '#fbbf24'; // yellow
+                        views.statusDot.style.backgroundColor = UI.STATUS_COLORS.TEMPORARY;
                         views.statusDot.classList.add('pulse');
                     }
                     if (views.statusText) views.statusText.textContent = `Expires in ${duration}m`;
@@ -364,22 +442,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 } else {
                     if (views.statusDot) {
-                        views.statusDot.style.backgroundColor = '#10b981'; // emerald
+                        views.statusDot.style.backgroundColor = UI.STATUS_COLORS.READY;
                         views.statusDot.classList.remove('pulse');
                     }
                     if (views.statusText) views.statusText.textContent = 'Permanent Rule Set';
                 }
             } else {
-                showMessage(result.error || "API Error. Check credentials.", "text-red-300");
+                Logger.error('applyRule', 'Failed to apply rule', { error: result.error });
+                showMessage(result.error || ErrorMessages.API_ERROR, "text-red-300");
             }
-            
+
             // Refresh rule status after applying
             await checkExistingRule();
         } catch (err) {
-            showMessage(`Network Error: ${err.message}`, "text-red-300");
+            Logger.error('applyRule', 'Exception while applying rule', err);
+            showMessage(`${ErrorMessages.NETWORK_ERROR}: ${err.message}`, "text-red-300");
         } finally {
-            views.applyBtn.textContent = "Apply Rule";
-            views.applyBtn.disabled = false;
+            resetButton(views.applyBtn);
         }
     });
 
@@ -387,41 +466,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     views.removeBtn?.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         if (!currentDomain) return;
-        
+
         const duration = parseInt(views.inputs.duration.value);
-        
+
         const storedData = await chrome.storage.sync.get(['apiKey', 'profileId']);
         const apiKey = storedData.apiKey?.trim();
         const profileId = storedData.profileId?.trim();
 
         if (!apiKey || !profileId) {
-            showMessage("Missing API Key or Profile ID. Please configure in settings.", "text-red-300");
+            Logger.warn('removeRule', 'Missing credentials');
+            showMessage(ErrorMessages.MISSING_CREDENTIALS, "text-red-300");
             views.config.classList.remove('hidden');
             return;
         }
 
-        views.removeBtn.textContent = "Removing...";
-        views.removeBtn.disabled = true;
+        setButtonLoading(views.removeBtn, 'Removing...');
 
         try {
+            Logger.info('removeRule', 'Removing rule', {
+                domain: currentDomain,
+                duration,
+                existingRuleAction
+            });
+
             const result = await removeControlDRule(apiKey, profileId, currentDomain, duration);
-            
+
             if (result.success) {
                 if (duration > 0) {
+                    Logger.info('removeRule', 'Rule removed temporarily', {
+                        domain: currentDomain,
+                        reapplyIn: duration
+                    });
                     showMessage(`Rule removed! Will re-apply in ${duration} minutes.`, "text-emerald-300");
-                    
+
                     chrome.alarms.create(`reapply_rule_${currentDomain}`, {
                         delayInMinutes: duration
                     });
-                    
+
                     const ruleAction = existingRuleAction !== null && existingRuleAction !== undefined ? existingRuleAction : null;
-                    
+
                     if (ruleAction === null) {
+                        Logger.warn('removeRule', 'Could not detect rule type for re-application', {
+                            domain: currentDomain
+                        });
                         showMessage("Warning: Could not detect rule type. Rule will be permanently removed.", "text-yellow-300");
                     }
-                    
+
                     await chrome.storage.local.set({
                         [`rule_${currentDomain}`]: {
                             action: ruleAction,
@@ -430,39 +522,44 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     });
                 } else {
+                    Logger.info('removeRule', 'Rule removed permanently', { domain: currentDomain });
                     showMessage("Rule removed permanently!", "text-emerald-300");
                 }
-                
+
                 // Update status display
                 if (duration > 0) {
                     if (views.statusDot) {
-                        views.statusDot.style.backgroundColor = '#fbbf24';
+                        views.statusDot.style.backgroundColor = UI.STATUS_COLORS.TEMPORARY;
                         views.statusDot.classList.add('pulse');
                     }
                     if (views.statusText) views.statusText.textContent = `Removed (re-applies in ${duration}m)`;
                 } else {
                     if (views.statusDot) {
-                        views.statusDot.style.backgroundColor = '#10b981';
+                        views.statusDot.style.backgroundColor = UI.STATUS_COLORS.READY;
                         views.statusDot.classList.remove('pulse');
                     }
                     if (views.statusText) views.statusText.textContent = 'Rule Removed';
                 }
-                
+
                 setTimeout(async () => {
                     await checkExistingRule();
-                    
+
                     if (hasExistingRule) {
+                        Logger.warn('removeRule', 'Rule still appears active after removal', {
+                            domain: currentDomain
+                        });
                         showMessage("Warning: Rule may still be active. Please check Control-D dashboard.", "text-yellow-300");
                     }
-                }, 2000);
+                }, UI.RECHECK_DELAY);
             } else {
-                showMessage(result.error || "API Error. Check credentials.", "text-red-300");
+                Logger.error('removeRule', 'Failed to remove rule', { error: result.error });
+                showMessage(result.error || ErrorMessages.API_ERROR, "text-red-300");
             }
         } catch (err) {
-            showMessage(`Network Error: ${err.message}`, "text-red-300");
+            Logger.error('removeRule', 'Exception while removing rule', err);
+            showMessage(`${ErrorMessages.NETWORK_ERROR}: ${err.message}`, "text-red-300");
         } finally {
-            views.removeBtn.textContent = "Remove Rule";
-            views.removeBtn.disabled = false;
+            resetButton(views.removeBtn);
         }
     });
 
@@ -717,8 +814,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             hostnames: [domain],
             do: action
         };
-        
-        if (action === 3 && proxyId) {
+
+        if (action === RuleAction.REDIRECT && proxyId) {
             body.via = proxyId;
         }
 
@@ -818,6 +915,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * Show a message to the user
+     * @param {string} text - Message text
+     * @param {string} colorClass - Tailwind color class
+     */
     function showMessage(text, colorClass) {
         if (views.message) {
             views.message.textContent = text;
@@ -827,7 +929,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                     views.message.textContent = '';
                     views.message.className = 'mt-5 text-center text-xs h-5 font-medium';
                 }
-            }, 3000);
+            }, UI.MESSAGE_TIMEOUT);
         }
+    }
+
+    /**
+     * Show loading state on a button
+     * @param {HTMLElement} button - Button element
+     * @param {string} loadingText - Text to show while loading
+     */
+    function setButtonLoading(button, loadingText) {
+        if (!button) return;
+        button.disabled = true;
+        button.dataset.originalText = button.textContent;
+        button.innerHTML = `<span class="spinner" style="margin-right: 8px;"></span>${loadingText}`;
+    }
+
+    /**
+     * Reset button from loading state
+     * @param {HTMLElement} button - Button element
+     */
+    function resetButton(button) {
+        if (!button) return;
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || button.textContent.replace(/^.*?\s/, '');
+        delete button.dataset.originalText;
     }
 });
